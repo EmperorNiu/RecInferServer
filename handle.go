@@ -73,7 +73,6 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 			} else {
 				log.Println("unknown key")
 			}
-
 		}
 	}
 	log.Println(local_data)
@@ -208,7 +207,7 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 			//	}(k)
 			//}
 			//wg.Wait()
-		} else if  pattern == 2{
+		} else if  pattern >= 2{
 			var wg sync.WaitGroup
 			wg.Add(pattern)
 			for i:=0;i<len(keys)/2;i++{
@@ -220,57 +219,22 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 				go func(i int) {
 					defer wg.Done()
 					tmp := make(map[string][]int)
-					tmp["keys"] = keys[:len(keys)/4]
+					tmp["keys"] = keys[:len(keys)/2/pattern]
 					newData, err := json.Marshal(tmp)
 					if err != nil {
 						log.Println(err)
 					} else {
 						//r.Body = ioutil.NopCloser(bytes.NewBuffer(newData))
 						//req, err := http.Post(remote.Host, bytes.NewReader(newData))
+						//log.Println(CubeIps[i]+"/DictService/seek")
 						if resp, err := http.Post(CubeIps[i]+"/DictService/seek", "application/json", bytes.NewReader(newData)); err == nil {
-							ioutil.ReadAll(resp.Body)
-							//fmt.Println(string(body))
-						} else {
-							log.Println("error")
-						}
-					}
-				}(i)
-			}
-			wg.Wait()
-			result := make(map[string]interface{})
-			elapsed := time.Since(start)
-			result["time"] = elapsed
-			log.Println(result)
-			json.NewEncoder(w).Encode(result)
-		} else if  pattern == 3{
-			var wg sync.WaitGroup
-			wg.Add(12)
-			for i:=0;i<len(keys)/2;i++{
-				if lv, ok := Local_emb[keys[i]]; ok{
-					local_result = append(local_result, lv)
-				}
-			}
-			for i:=0;i<12;i++ {
-				go func(k int) {
-					defer wg.Done()
-					tmp := make(map[string][]int)
-					tmp["keys"] = keys[:len(keys)/6]
-					newData, err := json.Marshal(tmp)
-					//log.Println(newData)
-					if err != nil {
-						log.Println(err)
-					} else {
-						//r.Body = ioutil.NopCloser(bytes.NewBuffer(newData))
-						//req, err := http.Post(remote.Host, bytes.NewReader(newData))
-						log.Println(CubeIps[k]+"/DictService/seek")
-						if resp, err := http.Post(CubeIps[k]+"/DictService/seek", "application/json", bytes.NewReader(newData)); err == nil {
 							body,_ := ioutil.ReadAll(resp.Body)
 							fmt.Println(string(body))
 						} else {
 							log.Println("error")
 						}
 					}
-				}(i%4)
+				}((i+1)%4)
 			}
 			wg.Wait()
 			result := make(map[string]interface{})

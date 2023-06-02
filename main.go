@@ -14,6 +14,8 @@ import (
 var srv http.Server
 var Our_partition map[int]int
 var Our_hot_cache map[int]map[int]bool
+var Het_partition map[int]int
+var Het_hot_cache map[int]map[int]bool
 var Local_emb map[int]string
 
 func loadPartition(file_name string, n_part int) (map[int]int, map[int]map[int]bool){
@@ -76,6 +78,9 @@ func main() {
 	//cmd = parseCmd()
 	n_part := 4
 	Our_partition, Our_hot_cache = loadPartition("our", n_part)
+	Het_partition, Het_hot_cache = loadPartition("het", n_part)
+	log.Println(len(Our_partition))
+	log.Println(len(Het_partition))
 	Local_emb = make(map[int]string)
 	for i:=0;i<1000000;i++ {
 		for j:=0;j<8;j++ {

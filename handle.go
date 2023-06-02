@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -43,31 +44,43 @@ func (this *handle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if r.URL.Path == "/profile" && r.Method == "POST" {
 		batchProfile(w,r)
 		return
+	} else if r.URL.Path == "/calculate" && r.Method == "POST" {
+		requestServing(w, r)
+		return
 	}
 }
 
 func embedRequest(w http.ResponseWriter, r *http.Request){
-	//log.Println("receive")
-	//if err := r.ParseForm(); err != nil {
-	//	fmt.Fprintf(w, "ParseForm() err: %v", err)
-	//	return
-	//}
-	//value := r.FormValue("keys")
 	body, _ := ioutil.ReadAll(r.Body)
-	var data map[string][]int
+	type req_data struct {
+		Keys    []int `json:"keys"`
+		Pattern string   `json:"pattern"`
+	}
+	var data req_data
+	//var data map[string][]int
 	_ = json.Unmarshal(body, &data)
-	keys := data["keys"]
+	keys := data.Keys
+	pattern := data.Pattern
+	var partition map[int]int
+	var hot_cache map[int]map[int]bool
+	if pattern == "our" {
+		partition = Our_partition
+		hot_cache = Our_hot_cache
+	} else {
+		partition = Het_partition
+		hot_cache = Het_hot_cache
+	}
 	//log.Println(keys)
 	//var remote_data map[int][]int
 	remote_data := make(map[int][]int)
 	//remote_result := make(map[int][]string)
 	var local_data []int
 	for i := range keys {
-		_, ok := Our_hot_cache[Rank][keys[i]]
-		if Our_partition[keys[i]]==Rank || ok {
+		_, ok := hot_cache[Rank][keys[i]]
+		if partition[keys[i]]==Rank || ok {
 			local_data = append(local_data, keys[i])
 		} else {
-			pos, ok := Our_partition[keys[i]]
+			pos, ok := partition[keys[i]]
 			if ok {
 				remote_data[pos] = append(remote_data[pos], keys[i])
 			} else {
@@ -75,7 +88,7 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 			}
 		}
 	}
-	log.Println(local_data)
+	//log.Println(local_data)
 	//json.NewEncoder(w).Encode(tmp)
 	//newData, err := json.Marshal(post)
 	var wg sync.WaitGroup
@@ -106,20 +119,12 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 					log.Println("error")
 				}
 			}
-			//proxy := httputil.NewSingleHostReverseProxy(remote)
-			//r.Host = remote.Host
-			//proxy.ServeHTTP(w, r)
 		}(k)
 	}
 	wg.Wait()
 	//tmp := make(map[string]string)
 	//tmp["result"] = "success"
 	json.NewEncoder(w).Encode(local_result)
-	//log.Println(r.RemoteAddr + " " + r.Method + " " + r.URL.String() + " " + r.Proto + " " + r.UserAgent())
-	//remote, err := url.Parse(this.reverseProxy)
-	//if err != nil {
-	//	log.Fatalln(err)
-	//}
 }
 
 func batchProfile(w http.ResponseWriter, r *http.Request) {
@@ -248,3 +253,26 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func requestServing(w http.ResponseWriter, r *http.Request) {
+	log.Println(123)
+	batch := 8
+	emb_num := 416
+	var data [][]float32
+	for i:=0;i<batch;i++ {
+		var data_i []float32
+		for j:=0;j<emb_num;j++ {
+			data_i = append(data_i, rand.Float32())
+		}
+		data = append(data, data_i)
+	}
+	log.Println(data)
+	keys := make(map[string][][]float32)
+	keys["instances"] = data
+	newData, _ := json.Marshal(keys)
+	if resp, err := http.Post("http://127.0.0.1:8501/v1/models/wdl:predict", "application/json", bytes.NewReader(newData)); err == nil {
+		body,_ := ioutil.ReadAll(resp.Body)
+		fmt.Println(string(body))
+	} else {
+		log.Println("error")
+	}
+}

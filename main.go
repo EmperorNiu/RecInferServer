@@ -16,7 +16,7 @@ var Our_partition map[int]int
 var Our_hot_cache map[int]map[int]bool
 var Het_partition map[int]int
 var Het_hot_cache map[int]map[int]bool
-var Local_emb map[int]string
+var Local_emb map[int][]float32
 
 func loadPartition(file_name string, n_part int) (map[int]int, map[int]map[int]bool){
 	partition := make(map[int]int)
@@ -82,13 +82,13 @@ func main() {
 	log.Println("Rank: ", Rank)
 	//log.Println(len(Our_partition))
 	//log.Println(len(Het_partition))
-	Local_emb = make(map[int]string)
+
+	Local_emb = make(map[int][]float32) // 本机保存的嵌入参数
 	for i:=0;i<1000000;i++ {
 		for j:=0;j<8;j++ {
-			Local_emb[i] += strconv.FormatFloat(float64(rand.Float32()), 'f', 10, 32)
-			//Local_emb[i][j] = rand.Float32()
+			//Local_emb[i] += strconv.FormatFloat(float64(rand.Float32()), 'f', 10, 32)
+			Local_emb[i] = append(Local_emb[i], rand.Float32())
 		}
 	}
-
 	StartServer("0.0.0.0:" + strconv.Itoa(Port))
 }

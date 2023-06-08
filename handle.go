@@ -18,7 +18,6 @@ type handle struct {
 	//reverseProxy string
 }
 
-
 func calLocalizationPerformanceTest(){
 	n_part := 4
 	our_partition, our_hot_cache := loadPartition("our", n_part)
@@ -35,7 +34,6 @@ func calLocalizationPerformanceTest(){
 	fmt.Println("该函数执行完成耗时：", elapsed)
 }
 
-
 func (this *handle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Println(r.URL.Path)
 	if r.URL.Path == "/DictService/seek" && r.Method == "POST" {
@@ -46,6 +44,9 @@ func (this *handle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if r.URL.Path == "/calculate" && r.Method == "POST" {
 		requestServing(w, r)
+		return
+	} else if r.URL.Path == "/lookup" && r.Method == "POST" {
+		localEmbed(w, r)
 		return
 	}
 }
@@ -73,7 +74,7 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 	//log.Println(keys)
 	//var remote_data map[int][]int
 	remote_data := make(map[int][]int)
-	//remote_result := make(map[int][]string)
+
 	var local_data []int
 	for i := range keys {
 		_, ok := hot_cache[Rank][keys[i]]
@@ -92,15 +93,17 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 	//json.NewEncoder(w).Encode(tmp)
 	//newData, err := json.Marshal(post)
 	var wg sync.WaitGroup
-	wg.Add(len(remote_data))
-	var local_result []string
+	wg.Add(len(remote_data)+1)
+	var local_result [][]float32
 	go func() {
+		defer wg.Done()
 		for _, lk := range local_data {
 			if lv, ok := Local_emb[lk]; ok{
 				local_result = append(local_result, lv)
 			}
 		}
 	}()
+	remote_result := make(map[int][][]float32)
 	for k,_ := range remote_data {
 		go func(k int) {
 			defer wg.Done()
@@ -112,9 +115,13 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 			} else {
 				//r.Body = ioutil.NopCloser(bytes.NewBuffer(newData))
 				//req, err := http.Post(remote.Host, bytes.NewReader(newData))
-				if resp, err := http.Post(CubeIps[k]+"/DictService/seek", "application/json", bytes.NewReader(newData)); err == nil {
-					ioutil.ReadAll(resp.Body)
-					//fmt.Println(string(body))
+				//if resp, err := http.Post(CubeIps[k]+"/DictService/seek", "application/json", bytes.NewReader(newData)); err == nil {
+				if resp, err := http.Post(CubeIps[k]+"/lookup", "application/json", bytes.NewReader(newData)); err == nil {
+					result, _ := ioutil.ReadAll(resp.Body)
+					var res_data [][]float32
+					_ = json.Unmarshal(result, &res_data)
+					//fmt.Println(res_data)
+					remote_result[k] = res_data
 				} else {
 					log.Println("error")
 				}
@@ -122,41 +129,36 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 		}(k)
 	}
 	wg.Wait()
-	//tmp := make(map[string]string)
-	//tmp["result"] = "success"
-	json.NewEncoder(w).Encode(local_result)
+	tmp := make(map[string][][]float32)
+	for k,_ := range remote_data {
+		local_result = append(local_result, remote_result[k]...)
+	}
+	tmp["result"] = local_result
+	err := json.NewEncoder(w).Encode(local_result)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 func localEmbed(w http.ResponseWriter, r *http.Request) {
 	body, _ := ioutil.ReadAll(r.Body)
-	type req_data struct {
+	type reqData struct {
 		Keys    []int `json:"keys"`
-		Pattern string   `json:"pattern"`
 	}
-	var data req_data
-	//var data map[string][]int
+	var data reqData
 	_ = json.Unmarshal(body, &data)
 	keys := data.Keys
-	var partition map[int]int
-	var hot_cache map[int]map[int]bool
-
-	partition = Our_partition
-	hot_cache = Our_hot_cache
-	remote_data := make(map[int][]int)
-	//remote_result := make(map[int][]string)
-	var local_data []int
-	for i := range keys {
-		_, ok := hot_cache[Rank][keys[i]]
-		if partition[keys[i]]==Rank || ok {
-			local_data = append(local_data, keys[i])
-		} else {
-			pos, ok := partition[keys[i]]
-			if ok {
-				remote_data[pos] = append(remote_data[pos], keys[i])
-			} else {
-				log.Println("unknown key")
-			}
+	var localResult [][]float32
+	for _, lk := range keys {
+		if lv, ok := Local_emb[lk%1000000]; ok{
+			localResult = append(localResult, lv)
 		}
+	}
+	err := json.NewEncoder(w).Encode(localResult)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 }
 
@@ -176,7 +178,7 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 		//log.Println(data.Keys)
 		keys := data.Keys
 		pattern := data.Pattern
-		var local_result []string
+		var local_result [][]float32
 		if pattern == 0 {
 
 			for _, lk := range keys {
@@ -199,9 +201,8 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 			tmp := make(map[string][]int)
 			tmp["keys"] = keys[len(keys)/2:]
 			newData, _ := json.Marshal(tmp)
-			if resp, err := http.Post(CubeIps[1]+"/DictService/seek", "application/json", bytes.NewReader(newData)); err == nil {
+			if resp, err := http.Post(CubeIps[1]+"/lookup", "application/json", bytes.NewReader(newData)); err == nil {
 				body,_ := ioutil.ReadAll(resp.Body)
-
 				fmt.Println(string(body))
 			} else {
 				log.Println("error")
@@ -211,48 +212,17 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 			result["time"] = elapsed
 			log.Println(result)
 			json.NewEncoder(w).Encode(result)
-			//var wg sync.WaitGroup
-			//wg.Add(len(remote_data))
-			//go func() {
-			//	for _, lk := range local_data {
-			//		if lv, ok := Local_emb[lk]; ok{
-			//			local_result = append(local_result, lv)
-			//		}
-			//	}
-			//}()
-			//for k,_ := range remote_data {
-			//	go func(k int) {
-			//		defer wg.Done()
-			//		tmp := make(map[string][]int)
-			//		tmp["keys"] = remote_data[k]
-			//		newData, err := json.Marshal(tmp)
-			//		if err != nil {
-			//			log.Println(err)
-			//		} else {
-			//			//log.Println(string(newData))
-			//			//r.Body = ioutil.NopCloser(bytes.NewBuffer(newData))
-			//			//req, err := http.Post(remote.Host, bytes.NewReader(newData))
-			//			if resp, err := http.Post(CubeIps[k]+"/DictService/seek", "application/json", bytes.NewReader(newData)); err == nil {
-			//				ioutil.ReadAll(resp.Body)
-			//				//fmt.Println(string(body))
-			//			} else {
-			//				log.Println("error")
-			//			}
-			//		}
-			//		//proxy := httputil.NewSingleHostReverseProxy(remote)
-			//		//r.Host = remote.Host
-			//		//proxy.ServeHTTP(w, r)
-			//	}(k)
-			//}
-			//wg.Wait()
 		} else if  pattern >= 2{
 			var wg sync.WaitGroup
-			wg.Add(pattern)
-			for i:=0;i<len(keys)/2;i++{
-				if lv, ok := Local_emb[keys[i]]; ok{
-					local_result = append(local_result, lv)
+			wg.Add(pattern+1)
+			go func() {
+				defer wg.Done()
+				for i:=0;i<len(keys)/2;i++{
+					if lv, ok := Local_emb[keys[i]]; ok{
+						local_result = append(local_result, lv)
+					}
 				}
-			}
+			}()
 			for i:=0;i<pattern;i++ {
 				go func(i int) {
 					defer wg.Done()
@@ -265,7 +235,7 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 						//r.Body = ioutil.NopCloser(bytes.NewBuffer(newData))
 						//req, err := http.Post(remote.Host, bytes.NewReader(newData))
 						//log.Println(CubeIps[i]+"/DictService/seek")
-						if resp, err := http.Post(CubeIps[i]+"/DictService/seek", "application/json", bytes.NewReader(newData)); err == nil {
+						if resp, err := http.Post(CubeIps[i]+"/lookup", "application/json", bytes.NewReader(newData)); err == nil {
 							body,_ := ioutil.ReadAll(resp.Body)
 							fmt.Println(string(body))
 						} else {
@@ -289,11 +259,11 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 func requestServing(w http.ResponseWriter, r *http.Request) {
 	log.Println(123)
 	batch := 8
-	emb_num := 416
+	embNum := 416
 	var data [][]float32
 	for i:=0;i<batch;i++ {
 		var data_i []float32
-		for j:=0;j<emb_num;j++ {
+		for j:=0;j< embNum;j++ {
 			data_i = append(data_i, rand.Float32())
 		}
 		data = append(data, data_i)

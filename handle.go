@@ -127,6 +127,39 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 	json.NewEncoder(w).Encode(local_result)
 }
 
+func localEmbed(w http.ResponseWriter, r *http.Request) {
+	body, _ := ioutil.ReadAll(r.Body)
+	type req_data struct {
+		Keys    []int `json:"keys"`
+		Pattern string   `json:"pattern"`
+	}
+	var data req_data
+	//var data map[string][]int
+	_ = json.Unmarshal(body, &data)
+	keys := data.Keys
+	var partition map[int]int
+	var hot_cache map[int]map[int]bool
+
+	partition = Our_partition
+	hot_cache = Our_hot_cache
+	remote_data := make(map[int][]int)
+	//remote_result := make(map[int][]string)
+	var local_data []int
+	for i := range keys {
+		_, ok := hot_cache[Rank][keys[i]]
+		if partition[keys[i]]==Rank || ok {
+			local_data = append(local_data, keys[i])
+		} else {
+			pos, ok := partition[keys[i]]
+			if ok {
+				remote_data[pos] = append(remote_data[pos], keys[i])
+			} else {
+				log.Println("unknown key")
+			}
+		}
+	}
+}
+
 func batchProfile(w http.ResponseWriter, r *http.Request) {
 	if body, err := ioutil.ReadAll(r.Body); err != nil{
 		fmt.Fprintf(w, "ParseForm() err: %v", err)

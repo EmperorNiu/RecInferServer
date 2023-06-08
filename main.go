@@ -79,8 +79,9 @@ func main() {
 	n_part := 4
 	Our_partition, Our_hot_cache = loadPartition("our", n_part)
 	Het_partition, Het_hot_cache = loadPartition("het", n_part)
-	log.Println(len(Our_partition))
-	log.Println(len(Het_partition))
+	log.Println("Rank: ", Rank)
+	//log.Println(len(Our_partition))
+	//log.Println(len(Het_partition))
 	Local_emb = make(map[int]string)
 	for i:=0;i<1000000;i++ {
 		for j:=0;j<8;j++ {

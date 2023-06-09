@@ -186,7 +186,6 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 		pattern := data.Pattern
 		var local_result [][]float32
 		if pattern == 0 {
-
 			for _, lk := range keys {
 				if lv, ok := Local_emb[lk]; ok{
 					local_result = append(local_result, lv)
@@ -197,28 +196,31 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 			result["time"] = elapsed
 			log.Println(result)
 			json.NewEncoder(w).Encode(result)
-		} else if pattern == 1 {
-			//var local_data []int
-			for i:=0;i<len(keys)/2;i++{
-				if lv, ok := Local_emb[keys[i]]; ok{
-					local_result = append(local_result, lv)
-				}
-			}
-			tmp := make(map[string][]int)
-			tmp["keys"] = keys[len(keys)/2:]
-			newData, _ := json.Marshal(tmp)
-			if resp, err := http.Post(CubeIps[1]+"/lookup", "application/json", bytes.NewReader(newData)); err == nil {
-				body,_ := ioutil.ReadAll(resp.Body)
-				fmt.Println(string(body))
-			} else {
-				log.Println("error")
-			}
-			result := make(map[string]interface{})
-			elapsed := time.Since(start)
-			result["time"] = elapsed
-			log.Println(result)
-			json.NewEncoder(w).Encode(result)
-		} else if  pattern >= 2{
+		//} else if pattern == 1 {
+		//	//var wg sync.WaitGroup
+		//	//wg.Add(pattern+1)
+		//	//var local_data []int
+		//	for i:=0;i<len(keys)/2;i++{
+		//		if lv, ok := Local_emb[keys[i]]; ok{
+		//			local_result = append(local_result, lv)
+		//		}
+		//	}
+		//	tmp := make(map[string][]int)
+		//	tmp["keys"] = keys[len(keys)/2:]
+		//	newData, _ := json.Marshal(tmp)
+		//	if resp, err := http.Post(CubeIps[1]+"/lookup", "application/json", bytes.NewReader(newData)); err == nil {
+		//		body,_ := ioutil.ReadAll(resp.Body)
+		//		fmt.Println(string(body))
+		//	} else {
+		//		log.Println("error")
+		//	}
+		//	result := make(map[string]interface{})
+		//	elapsed := time.Since(start)
+		//	result["time"] = elapsed
+		//	log.Println(result)
+		//	json.NewEncoder(w).Encode(result)
+		} else if  pattern >= 1{
+			var remote_result sync.Map
 			var wg sync.WaitGroup
 			wg.Add(pattern+1)
 			go func() {
@@ -242,8 +244,12 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 						//req, err := http.Post(remote.Host, bytes.NewReader(newData))
 						//log.Println(CubeIps[i]+"/DictService/seek")
 						if resp, err := http.Post(CubeIps[i]+"/lookup", "application/json", bytes.NewReader(newData)); err == nil {
-							body,_ := ioutil.ReadAll(resp.Body)
-							fmt.Println(string(body))
+							result, _ := ioutil.ReadAll(resp.Body)
+							var res_data [][]float32
+							_ = json.Unmarshal(result, &res_data)
+							//fmt.Println(res_data)
+							//remote_result[k] = res_data
+							remote_result.Store(i, res_data)
 						} else {
 							log.Println("error")
 						}

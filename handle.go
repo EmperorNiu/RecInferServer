@@ -85,7 +85,7 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 			if ok {
 				remote_data[pos] = append(remote_data[pos], keys[i])
 			} else {
-				log.Println("unknown key")
+				log.Println("unknown key ", keys[i])
 			}
 		}
 	}
@@ -103,7 +103,8 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 			}
 		}
 	}()
-	remote_result := make(map[int][][]float32)
+	var remote_result sync.Map
+	//remote_result := make(map[int][][]float32)
 	for k,_ := range remote_data {
 		go func(k int) {
 			defer wg.Done()
@@ -121,7 +122,8 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 					var res_data [][]float32
 					_ = json.Unmarshal(result, &res_data)
 					//fmt.Println(res_data)
-					remote_result[k] = res_data
+					//remote_result[k] = res_data
+					remote_result.Store(k, res_data)
 				} else {
 					log.Println("error")
 				}
@@ -131,7 +133,11 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 	wg.Wait()
 	tmp := make(map[string][][]float32)
 	for k,_ := range remote_data {
-		local_result = append(local_result, remote_result[k]...)
+		//local_result = append(local_result, remote_result[k]...)
+		data, _ := remote_result.Load(k)
+		var fdata [][]float32
+		fdata = data.([][]float32)
+		local_result = append(local_result, fdata...)
 	}
 	tmp["result"] = local_result
 	err := json.NewEncoder(w).Encode(local_result)

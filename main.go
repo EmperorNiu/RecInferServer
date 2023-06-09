@@ -81,7 +81,15 @@ func main() {
 	Het_partition, Het_hot_cache = loadPartition("het", n_part)
 	log.Println("Rank: ", Rank)
 	//log.Println(len(Our_partition))
-	//log.Println(len(Het_partition))
+	key:=31
+	pos, ok := Our_partition[key]
+	if ok {
+		log.Println(pos)
+	} else {
+		log.Println("unknown key ", key)
+	}
+	log.Println(Het_partition[key])
+	log.Println(Our_partition[key])
 
 	Local_emb = make(map[int][]float32) // 本机保存的嵌入参数
 	for i:=0;i<1000000;i++ {

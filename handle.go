@@ -42,6 +42,9 @@ func (this *handle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if r.URL.Path == "/profile" && r.Method == "POST" {
 		batchProfile(w,r)
 		return
+	} else if r.URL.Path == "/profile2" && r.Method == "POST" {
+		batchProfile2(w,r)
+		return
 	} else if r.URL.Path == "/calculate" && r.Method == "POST" {
 		requestServing(w, r)
 		return
@@ -194,7 +197,7 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 			result := make(map[string]interface{})
 			elapsed := time.Since(start)
 			result["time"] = elapsed
-			log.Println(result)
+			//log.Println(result)
 			json.NewEncoder(w).Encode(result)
 		//} else if pattern == 1 {
 		//	//var wg sync.WaitGroup
@@ -225,17 +228,17 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 			wg.Add(pattern+1)
 			go func() {
 				defer wg.Done()
-				for i:=0;i<len(keys)/2;i++{
+				for i:=0;i<len(keys)/3*2;i++{
 					if lv, ok := Local_emb[keys[i]]; ok{
 						local_result = append(local_result, lv)
 					}
 				}
 			}()
-			for i:=0;i<pattern;i++ {
+			for i:=1;i<=pattern;i++ {
 				go func(i int) {
 					defer wg.Done()
 					tmp := make(map[string][]int)
-					tmp["keys"] = keys[:len(keys)/2/pattern]
+					tmp["keys"] = keys[:len(keys)/3/pattern]
 					newData, err := json.Marshal(tmp)
 					if err != nil {
 						log.Println(err)
@@ -254,17 +257,80 @@ func batchProfile(w http.ResponseWriter, r *http.Request) {
 							log.Println("error")
 						}
 					}
-				}((i+1)%4)
+				}(i%4)
 			}
 			wg.Wait()
 			result := make(map[string]interface{})
 			elapsed := time.Since(start)
 			result["time"] = elapsed
-			log.Println(result)
+			//log.Println(result)
 			json.NewEncoder(w).Encode(result)
 		} else {
 			return
 		}
+	}
+}
+
+func batchProfile2(w http.ResponseWriter, r *http.Request) {
+	if body, err := ioutil.ReadAll(r.Body); err != nil{
+		fmt.Fprintf(w, "ParseForm() err: %v", err)
+		return
+	} else {
+		type profile_data struct {
+			Keys    []int `json:"keys"`
+			Pattern float32   `json:"pattern"`
+		}
+		var data profile_data
+		start := time.Now()
+		_ = json.Unmarshal(body, &data)
+		//log.Println(data.Pattern)
+		//log.Println(data.Keys)
+		keys := data.Keys
+		pattern := data.Pattern
+		var local_result [][]float32
+		var remote_result sync.Map
+		var wg sync.WaitGroup
+		wg.Add(4)
+		go func() {
+			defer wg.Done()
+			for i:=0;i<int(float32(len(keys))*pattern);i++{
+				if lv, ok := Local_emb[keys[i]]; ok{
+					local_result = append(local_result, lv)
+				}
+			}
+		}()
+		for i:=1;i<=3;i++ {
+			go func(i int) {
+				defer wg.Done()
+				tmp := make(map[string][]int)
+				tmp["keys"] = keys[:int(float32(len(keys))*(1-pattern)/3)]
+				newData, err := json.Marshal(tmp)
+				if err != nil {
+					log.Println(err)
+				} else {
+					//r.Body = ioutil.NopCloser(bytes.NewBuffer(newData))
+					//req, err := http.Post(remote.Host, bytes.NewReader(newData))
+					//log.Println(CubeIps[i]+"/DictService/seek")
+					if resp, err := http.Post(CubeIps[i]+"/lookup", "application/json", bytes.NewReader(newData)); err == nil {
+						result, _ := ioutil.ReadAll(resp.Body)
+						var res_data [][]float32
+						_ = json.Unmarshal(result, &res_data)
+						//fmt.Println(res_data)
+						//remote_result[k] = res_data
+						remote_result.Store(i, res_data)
+					} else {
+						log.Println("error")
+					}
+				}
+			}(i%4)
+		}
+		wg.Wait()
+		result := make(map[string]interface{})
+		elapsed := time.Since(start)
+		result["time"] = elapsed
+		//log.Println(result)
+		json.NewEncoder(w).Encode(result)
+
 	}
 }
 

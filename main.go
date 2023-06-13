@@ -88,8 +88,7 @@ func main() {
 	//} else {
 	//	log.Println("unknown key ", key)
 	//}
-	//log.Println(Het_partition[key])
-	//log.Println(Our_partition[key])
+
 	Local_emb = make(map[int][]float32) // 本机保存的嵌入参数
 	for i:=0;i<1000000;i++ {
 		for j:=0;j<8;j++ {

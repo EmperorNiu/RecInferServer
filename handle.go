@@ -59,12 +59,14 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 	type req_data struct {
 		Keys    []int `json:"keys"`
 		Pattern string   `json:"pattern"`
+		Perfect bool `json:"perfect"`
 	}
 	var data req_data
 	//var data map[string][]int
 	_ = json.Unmarshal(body, &data)
 	keys := data.Keys
 	pattern := data.Pattern
+	perfect := data.Perfect
 	var partition map[int]int
 	var hot_cache map[int]map[int]bool
 	if pattern == "our" {
@@ -75,30 +77,31 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 		hot_cache = Het_hot_cache
 	}
 
-	remote_data := make(map[int][]int)
-	remote_data_dict := make(map[int]int)
-	local_data := make(map[int]int)
-	key_len := len(keys)
-	result := make([][]float32, key_len)
-	for i := range keys {
-		_, ok := hot_cache[Rank][keys[i]]
-		if partition[keys[i]]==Rank || ok {
-			local_data[i] = keys[i]
-			//local_data = append(local_data, keys[i])
-		} else {
-			pos, ok := partition[keys[i]]
-			if ok {
-				remote_data[pos] = append(remote_data[pos], keys[i])
-				remote_data_dict[keys[i]] = i
+
+	if !perfect {
+		remote_data := make(map[int][]int)
+		remote_data_dict := make(map[int]int)
+		local_data := make(map[int]int)
+		key_len := len(keys)
+		result := make([][]float32, key_len)
+		for i := range keys {
+			_, ok := hot_cache[Rank][keys[i]]
+			if partition[keys[i]]==Rank || ok {
+				local_data[i] = keys[i]
+				//local_data = append(local_data, keys[i])
 			} else {
-				log.Println("unknown key ", keys[i])
+				pos, ok := partition[keys[i]]
+				if ok {
+					remote_data[pos] = append(remote_data[pos], keys[i])
+					remote_data_dict[keys[i]] = i
+				} else {
+					log.Println("unknown key ", keys[i])
+				}
 			}
 		}
-	}
-	//log.Println(remote_data)
-	//json.NewEncoder(w).Encode(tmp)
-	//newData, err := json.Marshal(post)
-	if len(remote_data) > 0{
+		//log.Println(remote_data)
+		//json.NewEncoder(w).Encode(tmp)
+		//newData, err := json.Marshal(post)
 		var wg sync.WaitGroup
 		wg.Add(len(remote_data)+1)
 		local_result := make(map[int][]float32)
@@ -168,7 +171,6 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 			}
 		}
 	} else {
-		//log.Println(1234)
 		var result [][]float32
 		for i := range keys {
 			if lv, ok := Local_emb[keys[i]%1000000]; ok{
@@ -181,7 +183,6 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 			return
 		}
 	}
-
 
 	//for k,_ := range remote_data {
 	//	//local_result = append(local_result, remote_result[k]...)

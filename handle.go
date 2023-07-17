@@ -75,9 +75,11 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 	if pattern == "our" {
 		partition = Our_partition
 		hot_cache = Our_hot_cache
-	} else {
+	} else if pattern == "het" {
 		partition = Het_partition
 		hot_cache = Het_hot_cache
+	} else {
+		hot_cache = Our_hot_cache
 	}
 
 
@@ -87,21 +89,36 @@ func embedRequest(w http.ResponseWriter, r *http.Request){
 		local_data := make(map[int]int)
 		key_len := len(keys)
 		result := make([][]float32, key_len)
-		for i := range keys {
-			_, ok := hot_cache[Rank][keys[i]]
-			if partition[keys[i]]==Rank || ok {
-				local_data[i] = keys[i]
-				//local_data = append(local_data, keys[i])
-			} else {
-				pos, ok := partition[keys[i]]
-				if ok {
+		if pattern == "cube" {
+			for i := range keys {
+				_, ok := hot_cache[Rank][keys[i]]
+				if keys[i]%4==Rank || ok {
+					local_data[i] = keys[i]
+					//local_data = append(local_data, keys[i])
+				} else {
+					pos := keys[i] % 4
 					remote_data[pos] = append(remote_data[pos], keys[i])
 					remote_data_dict[keys[i]] = i
+				}
+			}
+		} else {
+			for i := range keys {
+				_, ok := hot_cache[Rank][keys[i]]
+				if partition[keys[i]]==Rank || ok {
+					local_data[i] = keys[i]
+					//local_data = append(local_data, keys[i])
 				} else {
-					log.Println("unknown key ", keys[i])
+					pos, ok := partition[keys[i]]
+					if ok {
+						remote_data[pos] = append(remote_data[pos], keys[i])
+						remote_data_dict[keys[i]] = i
+					} else {
+						log.Println("unknown key ", keys[i])
+					}
 				}
 			}
 		}
+
 		//log.Println(remote_data)
 		//json.NewEncoder(w).Encode(tmp)
 		//newData, err := json.Marshal(post)
@@ -217,35 +234,49 @@ func embedRequestWithoutCache(w http.ResponseWriter, r *http.Request){
 	perfect := data.Perfect
 	var partition map[int]int
 	if pattern == "our" {
-		partition = Our_partition
+		partition = Our_no_cache_partition
 
-	} else {
+	} else if pattern == "het" {
 		partition = Het_partition
 	}
+
 	if !perfect {
 		remote_data := make(map[int][]int)
 		remote_data_dict := make(map[int]int)
 		local_data := make(map[int]int)
 		key_len := len(keys)
 		result := make([][]float32, key_len)
-		for i := range keys {
-			if partition[keys[i]]==Rank {
-				local_data[i] = keys[i]
-				//local_data = append(local_data, keys[i])
-			} else {
-				pos, ok := partition[keys[i]]
-				if ok {
+		if pattern == "cube" {
+			for i := range keys {
+				if keys[i]%4==Rank{
+					local_data[i] = keys[i]
+					//local_data = append(local_data, keys[i])
+				} else {
+					pos := keys[i] % 4
 					remote_data[pos] = append(remote_data[pos], keys[i])
 					remote_data_dict[keys[i]] = i
-				} else {
-					local_data[i] = keys[i]
-					//log.Println("unknown key ", keys[i])
 				}
 			}
+		} else {
+			for i := range keys {
+				if partition[keys[i]] == Rank {
+					local_data[i] = keys[i]
+					//local_data = append(local_data, keys[i])
+				} else {
+					pos, ok := partition[keys[i]]
+					if ok {
+						remote_data[pos] = append(remote_data[pos], keys[i])
+						remote_data_dict[keys[i]] = i
+					} else {
+						local_data[i] = keys[i]
+						//log.Println("unknown key ", keys[i])
+					}
+				}
+			}
+			//log.Println(remote_data)
+			//json.NewEncoder(w).Encode(tmp)
+			//newData, err := json.Marshal(post)
 		}
-		//log.Println(remote_data)
-		//json.NewEncoder(w).Encode(tmp)
-		//newData, err := json.Marshal(post)
 		var wg sync.WaitGroup
 		wg.Add(len(remote_data)+1)
 		local_result := make(map[int][]float32)
@@ -287,7 +318,6 @@ func embedRequestWithoutCache(w http.ResponseWriter, r *http.Request){
 		}
 		wg.Wait()
 		if len(remote_data) == 0{
-
 			for k,v := range local_result{
 				result[k] = v
 			}
@@ -314,6 +344,8 @@ func embedRequestWithoutCache(w http.ResponseWriter, r *http.Request){
 				}
 			}
 		}
+
+
 	} else {
 		var result [][]float32
 		for i := range keys {
@@ -561,8 +593,7 @@ func batchProfile2(w http.ResponseWriter, r *http.Request) {
 }
 
 func requestServing(w http.ResponseWriter, r *http.Request) {
-	log.Println(123)
-	batch := 8
+	batch := 16
 	embNum := 416
 	var data [][]float32
 	for i:=0;i<batch;i++ {
@@ -572,13 +603,20 @@ func requestServing(w http.ResponseWriter, r *http.Request) {
 		}
 		data = append(data, data_i)
 	}
-	log.Println(data)
+	//log.Println(data)
 	keys := make(map[string][][]float32)
 	keys["instances"] = data
+	start := time.Now()
 	newData, _ := json.Marshal(keys)
-	if resp, err := http.Post("http://127.0.0.1:8501/v1/models/wdl:predict", "application/json", bytes.NewReader(newData)); err == nil {
-		body,_ := ioutil.ReadAll(resp.Body)
-		fmt.Println(string(body))
+	if _, err := http.Post("http://127.0.0.1:8501/v1/models/wdl:predict", "application/json", bytes.NewReader(newData)); err == nil {
+		//body,_ := ioutil.ReadAll(resp.Body)
+		//fmt.Println(string(body))
+		result := make(map[string]interface{})
+		elapsed := time.Since(start)
+		result["time"] = elapsed
+		//log.Println(elapsed)
+		//log.Println(result)
+		json.NewEncoder(w).Encode(result)
 	} else {
 		log.Println("error")
 	}
